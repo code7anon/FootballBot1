@@ -236,7 +236,7 @@ function DataView() {
       </ul>
       <h3>Ročne akcije</h3>
       <p>Gumbe najdeš v zgornji vrstici (Admin bar). Za dodajanje novih tekem uporabi backfill prek PowerShella:</p>
-      <pre>Invoke-RestMethod -Uri ".../api/admin/backfill?competition_code=PL&season=2026" -Method Post -Headers @{{"x-admin-token"="TVOJ_TOKEN"}}</pre>
+      <pre>{`Invoke-RestMethod -Uri ".../api/admin/backfill?competition_code=PL&season=2026" -Method Post -Headers @{"x-admin-token"="Fbot_2026_x7K9m2Qp81ZrLm"}`}</pre>
     </div>
   </div>
 }
