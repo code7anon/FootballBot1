@@ -64,7 +64,7 @@ async def run_cycle(db: Session) -> dict:
         trader.ensure_bankroll()
         trader.settle_open()
 
-                now = datetime.utcnow()
+        now = datetime.utcnow()
         fixtures = db.scalars(
             select(Fixture)
             .where(Fixture.kickoff >= now)
