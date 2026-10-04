@@ -109,22 +109,87 @@ def odds_check(x_admin_token: str | None = Header(default=None), db: Session = D
 def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
     from ..services.odds import OddsProvider
-    from ..models import OddsSnapshot
+    from ..models import OddsSnapshot, Team
     provider = OddsProvider(db)
-    rows = db.scalars(select(OddsSnapshot).where(OddsSnapshot.fixture_provider_id.is_(None))).all()
-    linked = 0
-    for row in rows:
-        raw = row.raw_json or {}
-        event = raw.get("event") or {}
-        home = event.get("home_team") or ""
-        away = event.get("away_team") or ""
-        fixture = provider._match_fixture(home, away)
-        if fixture:
-            row.fixture_provider_id = fixture.provider_id
-            linked += 1
-    db.commit()
-    return {"ok": True, "total_unlinked": len(rows), "linked": linked}
 
+    # 1. Naloži VSE ekipe in VSE tekme v spomin (enkrat)
+    teams_by_id = {t.id: t.name for t in db.scalars(select(Team)).all()}
+    fixtures = db.scalars(select(Fixture).order_by(Fixture.kickoff.desc()).limit(500)).all()
+
+    def norm(s: str) -> str:
+        if not s:
+            return ""
+        s = s.lower()
+        for token in [" fc", " afc", " cf", " sc", " ac", "calcio ", " & ", " and ", "  "]:
+            s = s.replace(token, " ")
+        return "".join(c for c in s if c.isalnum() or c == " ").strip()
+
+    def similarity(a: str, b: str) -> float:
+        if not a or not b:
+            return 0.0
+        if a == b:
+            return 1.0
+        if a in b or b in a:
+            return 0.9
+        wa = set(a.split())
+        wb = set(b.split())
+        if not wa or not wb:
+            return 0.0
+        return len(wa & wb) / max(len(wa), len(wb))
+
+    def find_fixture(home: str, away: str):
+        h_norm = norm(home)
+        a_norm = norm(away)
+        best = None
+        best_score = 0.0
+        for f in fixtures:
+            th_name = teams_by_id.get(f.home_team_id, "")
+            ta_name = teams_by_id.get(f.away_team_id, "")
+            home_sim = similarity(h_norm, norm(th_name))
+            away_sim = similarity(a_norm, norm(ta_name))
+            score = (home_sim + away_sim) / 2
+            if score > best_score:
+                best_score = score
+                best = f
+        return best if best_score >= 0.5 else None
+
+    # 2. Naloži vse unlinked kvote
+    rows = db.scalars(select(OddsSnapshot).where(OddsSnapshot.fixture_provider_id.is_(None))).all()
+
+    # 3. Grupiraj po event_provider_id (vsaka tekma ima ~20-30 kvot)
+    events: dict[str, dict] = {}
+    for row in rows:
+        key = row.event_provider_id or f"single_{row.id}"
+        if key not in events:
+            raw = row.raw_json or {}
+            event = raw.get("event") or {}
+            events[key] = {
+                "home": event.get("home_team") or "",
+                "away": event.get("away_team") or "",
+                "rows": [],
+            }
+        events[key]["rows"].append(row)
+
+    # 4. Za vsak UNIKATEN dogodek poišči tekmo (samo enkrat)
+    linked = 0
+    for key, ev in events.items():
+        if not ev["home"] or not ev["away"]:
+            continue
+        fixture = find_fixture(ev["home"], ev["away"])
+        if fixture:
+            for row in ev["rows"]:
+                row.fixture_provider_id = fixture.provider_id
+                linked += 1
+
+    db.commit()
+    return {
+        "ok": True,
+        "total_unlinked_odds": len(rows),
+        "unique_events": len(events),
+        "linked_odds": linked,
+    }
+
+    
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
     f = db.get(Fixture, fixture_id)
