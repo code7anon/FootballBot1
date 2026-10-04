@@ -64,11 +64,12 @@ async def run_cycle(db: Session) -> dict:
         trader.ensure_bankroll()
         trader.settle_open()
 
-        now = datetime.utcnow()
+                now = datetime.utcnow()
         fixtures = db.scalars(
             select(Fixture)
-            .where(Fixture.kickoff >= now - timedelta(hours=3))
-            .where(Fixture.kickoff <= now + timedelta(hours=24))
+            .where(Fixture.kickoff >= now)
+            .where(Fixture.kickoff <= now + timedelta(days=7))
+            .where(Fixture.status == "NS")
             .order_by(Fixture.kickoff)
             .limit(100)
         ).all()
