@@ -15,7 +15,7 @@ from .schemas import MatchOut, BetOut
 from .services.worker import run_cycle
 from .services.model import predict_fixture
 from .services.paper import PaperTrader
-from .services.thesportsdb import TheSportsDBProvider
+from .services.football_data import FootballDataProvider
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -44,7 +44,7 @@ def health():
 def config():
     return {
         "paper_trading": settings.paper_trading,
-        "tracked_leagues": settings.leagues_ids,
+       "tracked_leagues": settings.competition_codes,
         "season": settings.football_season,
         "odds_enabled": settings.odds_enabled and bool(settings.odds_api_key),
         "min_edge": settings.min_edge,
@@ -133,15 +133,15 @@ async def run_cycle_endpoint(x_admin_token: str | None = Header(default=None), d
 
 
 @app.post("/api/admin/backfill")
-async def backfill(league_id: str, season: str | None = None, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+async def backfill(competition_code: str, season: int | None = None, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
-    provider = TheSportsDBProvider(db)
+    provider = FootballDataProvider(db)
     if not provider.enabled:
-        raise HTTPException(400, "THESPORTSDB_API_KEY is not configured")
-    count = await provider.sync_season(league_id, season)
+        raise HTTPException(400, "FOOTBALL_DATA_API_KEY is not configured")
+    count = await provider.sync_season(competition_code, season)
     return {
         "ok": True,
-        "league_id": league_id,
+        "competition_code": competition_code,
         "season": season or settings.football_season,
         "fixtures": count,
     }

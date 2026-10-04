@@ -10,11 +10,11 @@ class Settings(BaseSettings):
     database_url: str | None = None
     postgresql_addon_uri: str | None = None
 
-    # TheSportsDB (nadomešča API-Football)
-    thesportsdb_api_key: str = "3"
-    thesportsdb_base_url: str = "https://www.thesportsdb.com/api/v1/json"
-    football_season: str = "2024-2025"
-    tracked_leagues: str = "4328,4335,4331,4332,4334"
+    # Football-Data.org (nadomešča API-Football in TheSportsDB)
+    football_data_api_key: str | None = None
+    football_data_base_url: str = "https://api.football-data.org/v4"
+    football_season: int = 2026  # sezona = leto začetka (2026 = 2026/27)
+    tracked_leagues: str = "PL,PD,BL1,SA,FL1"  # kode tekmovanj
 
     odds_api_key: str | None = None
     odds_api_base_url: str = "https://api.the-odds-api.com/v4"
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     @property
-    def league_ids(self) -> list[str]:
+    def competition_codes(self) -> list[str]:
         return [x.strip() for x in self.tracked_leagues.split(",") if x.strip()]
 
     @property
