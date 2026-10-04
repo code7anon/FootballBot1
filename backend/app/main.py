@@ -186,6 +186,14 @@ def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = 
         "linked_odds": linked,
     }
 
+@app.post("/api/admin/clear-predictions")
+def clear_predictions(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    from .models import Prediction
+    count = db.query(Prediction).delete()
+    db.commit()
+    return {"ok": True, "deleted": count}
+
 
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
