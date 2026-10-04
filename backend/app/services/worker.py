@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from ..models import JobRun, Fixture, Prediction, SystemState
-from ..services.football import FootballProvider
+from ..services.thesportsdb import TheSportsDBProvider
 from ..services.odds import OddsProvider
 from ..services.model import predict_fixture, goal_markets
 from ..services.edge import build_signals
@@ -28,7 +28,7 @@ async def run_cycle(db: Session) -> dict:
     db.add(run); db.commit(); db.refresh(run)
     details: dict = {}
     try:
-        football = FootballProvider(db)
+                football = TheSportsDBProvider(db)
         odds = OddsProvider(db)
         if football.enabled:
             today = datetime.now(timezone.utc).date()

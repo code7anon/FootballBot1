@@ -74,7 +74,7 @@ class FootballProvider:
 
     async def sync_day(self, day: date) -> int:
         total = 0
-        for league_id in settings.leagues:
+        for league_id in settings.leagues_ids:
             data = await self._get("/fixtures", {
                 "league": league_id,
                 "season": settings.football_season,
@@ -122,7 +122,7 @@ class FootballProvider:
     async def sync_live(self) -> int:
         if not self.enabled:
             return 0
-        ids_param = "-".join(str(x) for x in settings.leagues)
+        ids_param = "-".join(str(x) for x in settings.leagues_ids)
         data = await self._get("/fixtures", {"live": ids_param})
         count = 0
         for item in data.get("response", [])[: settings.max_live_fixtures]:

@@ -3,9 +3,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Football Edge Bot"
-    env: str = "development"
-    log_level: str = "INFO"
+       # TheSportsDB (nadomešča API-Football)
+    thesportsdb_api_key: str = "3"  # Brezplačni testni ključ
+    thesportsdb_base_url: str = "https://www.thesportsdb.com/api/v1/json"
+    football_season: str = "2024-2025"  # TheSportsDB uporablja format "YYYY-YYYY"
+    tracked_leagues: str = "4328,4335,4331,4332,4334"  # PL, La Liga, Bundesliga, Serie A, Ligue 1
 
     database_url: str | None = None
     postgresql_addon_uri: str | None = None
@@ -45,9 +47,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
-    @property
-    def leagues(self) -> list[int]:
-        return [int(x.strip()) for x in self.tracked_leagues.split(",") if x.strip()]
+        @property
+    def league_ids(self) -> list[str]:
+        return [x.strip() for x in self.tracked_leagues.split(",") if x.strip()]ip()) for x in self.tracked_leagues.split(",") if x.strip()]
 
     @property
     def cors(self) -> list[str]:

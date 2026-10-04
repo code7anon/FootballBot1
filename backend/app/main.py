@@ -15,7 +15,7 @@ from .schemas import MatchOut, BetOut
 from .services.worker import run_cycle
 from .services.model import predict_fixture
 from .services.paper import PaperTrader
-from .services.football import FootballProvider
+from .services.thesportsdb import TheSportsDBProvider
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -44,12 +44,20 @@ def health():
 def config():
     return {
         "paper_trading": settings.paper_trading,
-        "tracked_leagues": settings.leagues,
+        "tracked_leagues": settings.leagues_ids,
         "season": settings.football_season,
         "odds_enabled": settings.odds_enabled and bool(settings.odds_api_key),
         "min_edge": settings.min_edge,
     }
 
+@app.post("/api/admin/reset-db")
+def reset_db(x_admin_token: str | None = Header(default=None)):
+    admin_guard(x_admin_token)
+    from .db import Base, engine
+    # To pobriše VSE tabele in jih znova ustvari (prazne)
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    return {"ok": True, "message": "Vse tabele so bile izbrisane in znova ustvarjene."}
 
 @app.get("/api/matches")
 def matches(day: str | None = None, db: Session = Depends(get_db)):
@@ -126,13 +134,13 @@ async def run_cycle_endpoint(x_admin_token: str | None = Header(default=None), d
 
 
 @app.post("/api/admin/backfill")
-async def backfill(league_id: int, season: int, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+async def backfill(league_id: str, season: str | None = None, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
-    provider = FootballProvider(db)
+    provider = TheSportsDBProvider(db)
     if not provider.enabled:
-        raise HTTPException(400, "API_FOOTBALL_KEY is not configured")
+        raise HTTPException(400, "THESPORTSDB_API_KEY is not configured")
     count = await provider.sync_season(league_id, season)
-    return {"ok": True, "league_id": league_id, "season": season, "fixtures": count}
+    return {"ok": True, "league_id": league_id, "season": season or settings.football_season, "fixtures": count}season": season, "fixtures": count}
 
 @app.post("/api/admin/enrich/{fixture_id}")
 async def enrich(fixture_id: int, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
