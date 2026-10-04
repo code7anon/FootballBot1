@@ -105,6 +105,26 @@ def odds_check(x_admin_token: str | None = Header(default=None), db: Session = D
         "distinct_fixtures_with_odds": distinct_fixtures,
     }
 
+@app.post("/api/admin/relink-odds")
+def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    from ..services.odds import OddsProvider
+    from ..models import OddsSnapshot
+    provider = OddsProvider(db)
+    rows = db.scalars(select(OddsSnapshot).where(OddsSnapshot.fixture_provider_id.is_(None))).all()
+    linked = 0
+    for row in rows:
+        raw = row.raw_json or {}
+        event = raw.get("event") or {}
+        home = event.get("home_team") or ""
+        away = event.get("away_team") or ""
+        fixture = provider._match_fixture(home, away)
+        if fixture:
+            row.fixture_provider_id = fixture.provider_id
+            linked += 1
+    db.commit()
+    return {"ok": True, "total_unlinked": len(rows), "linked": linked}
+
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
     f = db.get(Fixture, fixture_id)

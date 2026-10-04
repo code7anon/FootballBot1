@@ -78,22 +78,48 @@ class OddsProvider:
         self.db.commit()
         return count
 
-    def _match_fixture(self, home: str, away: str, kickoff: str | None):
-        fixtures = self.db.scalars(select(Fixture).order_by(Fixture.kickoff.desc()).limit(250)).all()
-        def norm(s):
-            return "".join(c.lower() for c in s if c.isalnum())
-        h, a = norm(home), norm(away)
+       def _match_fixture(self, home: str, away: str, kickoff: str | None = None):
+        fixtures = self.db.scalars(
+            select(Fixture).order_by(Fixture.kickoff.desc()).limit(500)
+        ).all()
+
+        def norm(s: str) -> str:
+            if not s:
+                return ""
+            s = s.lower()
+            # Odstrani pogoste oznake klubov
+            for token in [" fc", " afc", " cf", " sc", " ac", "calcio ", " & ", " and ", "  "]:
+                s = s.replace(token, " ")
+            return "".join(c for c in s if c.isalnum() or c == " ").strip()
+
+        def similarity(a: str, b: str) -> float:
+            if not a or not b:
+                return 0.0
+            if a == b:
+                return 1.0
+            if a in b or b in a:
+                return 0.9
+            wa = set(a.split())
+            wb = set(b.split())
+            if not wa or not wb:
+                return 0.0
+            return len(wa & wb) / max(len(wa), len(wb))
+
+        h_norm = norm(home)
+        a_norm = norm(away)
+
         best = None
-        best_score = 0
+        best_score = 0.0
         for f in fixtures:
             th = self.db.get(Team, f.home_team_id)
             ta = self.db.get(Team, f.away_team_id)
             if not th or not ta:
                 continue
-            score = 0
-            if h in norm(th.name) or norm(th.name) in h: score += 1
-            if a in norm(ta.name) or norm(ta.name) in a: score += 1
+            home_sim = similarity(h_norm, norm(th.name))
+            away_sim = similarity(a_norm, norm(ta.name))
+            score = (home_sim + away_sim) / 2
             if score > best_score:
                 best_score = score
                 best = f
-        return best if best_score == 2 else None
+
+        return best if best_score >= 0.5 else None
