@@ -115,6 +115,61 @@ def matches_upcoming(limit: int = Query(20, ge=1, le=100), db: Session = Depends
         })
     return result
 
+@app.get("/api/matches/with-predictions")
+def matches_with_predictions(limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
+    from sqlalchemy import desc
+    now = datetime.utcnow()
+    fixtures = db.scalars(
+        select(Fixture)
+        .where(Fixture.kickoff >= now)
+        .where(Fixture.status == "NS")
+        .order_by(Fixture.kickoff)
+        .limit(limit)
+    ).all()
+    result = []
+    for f in fixtures:
+        ht = db.get(Team, f.home_team_id)
+        at = db.get(Team, f.away_team_id)
+        # Pridobi napovedi
+        preds = db.scalars(
+            select(Prediction)
+            .where(Prediction.fixture_id == f.id)
+            .order_by(desc(Prediction.captured_at))
+            .limit(3)
+        ).all()
+        # Pridobi kvote
+        odds_rows = db.scalars(
+            select(OddsSnapshot)
+            .where(OddsSnapshot.fixture_provider_id == f.provider_id)
+            .where(OddsSnapshot.market == "h2h")
+            .limit(20)
+        ).all()
+        # Pridobi bete za to tekmo
+        bets_for_fixture = db.scalars(
+            select(Bet).where(Bet.fixture_id == f.id).limit(10)
+        ).all()
+        result.append({
+            "id": f.id,
+            "provider_id": f.provider_id,
+            "kickoff": f.kickoff.isoformat() if f.kickoff else None,
+            "status": f.status,
+            "home_team": ht.name if ht else "?",
+            "away_team": at.name if at else "?",
+            "home_goals": f.home_goals,
+            "away_goals": f.away_goals,
+            "predictions": [
+                {"market": p.market, "selection": p.selection, "probability": p.probability,
+                 "fair_odds": p.fair_odds, "confidence": p.confidence, "model": p.model_name}
+                for p in preds
+            ],
+            "odds_count": len(odds_rows),
+            "odds_sample": [
+                {"bookmaker": o.bookmaker, "selection": o.selection, "odds": o.odds}
+                for o in odds_rows[:6]
+            ],
+            "bets_count": len(bets_for_fixture),
+        })
+    return result
 
 @app.post("/api/admin/kill-connections")
 def kill_connections(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
