@@ -50,6 +50,8 @@ def config():
         "min_edge": settings.min_edge,
     }
 
+    
+
 @app.post("/api/admin/reset-db")
 def reset_db(x_admin_token: str | None = Header(default=None)):
     admin_guard(x_admin_token)
@@ -70,6 +72,23 @@ def matches(day: str | None = None, db: Session = Depends(get_db)):
         ht = db.get(Team, f.home_team_id); at = db.get(Team, f.away_team_id)
         result.append(MatchOut(id=f.id, provider_id=f.provider_id, league_id=f.league_id, kickoff=f.kickoff, status=f.status, minute=f.minute, home_team=ht.name if ht else str(f.home_team_id), away_team=at.name if at else str(f.away_team_id), home_goals=f.home_goals, away_goals=f.away_goals))
     return result
+
+
+@app.post("/api/admin/kill-connections")
+def kill_connections(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    from sqlalchemy import text
+    try:
+        result = db.execute(text(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+        ))
+        count = len(result.fetchall())
+        db.commit()
+        return {"ok": True, "terminated": count}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, str(exc))
 
 
 @app.get("/api/matches/{fixture_id}")
