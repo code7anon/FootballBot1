@@ -108,11 +108,11 @@ def odds_check(x_admin_token: str | None = Header(default=None), db: Session = D
 @app.post("/api/admin/relink-odds")
 def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
-        from .services.odds import OddsProvider
-    from ..models import OddsSnapshot, Team
+    from .services.odds import OddsProvider
+    from .models import OddsSnapshot, Team
+
     provider = OddsProvider(db)
 
-    # 1. Naloži VSE ekipe in VSE tekme v spomin (enkrat)
     teams_by_id = {t.id: t.name for t in db.scalars(select(Team)).all()}
     fixtures = db.scalars(select(Fixture).order_by(Fixture.kickoff.desc()).limit(500)).all()
 
@@ -153,10 +153,8 @@ def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = 
                 best = f
         return best if best_score >= 0.5 else None
 
-    # 2. Naloži vse unlinked kvote
     rows = db.scalars(select(OddsSnapshot).where(OddsSnapshot.fixture_provider_id.is_(None))).all()
 
-    # 3. Grupiraj po event_provider_id (vsaka tekma ima ~20-30 kvot)
     events: dict[str, dict] = {}
     for row in rows:
         key = row.event_provider_id or f"single_{row.id}"
@@ -170,7 +168,6 @@ def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = 
             }
         events[key]["rows"].append(row)
 
-    # 4. Za vsak UNIKATEN dogodek poišči tekmo (samo enkrat)
     linked = 0
     for key, ev in events.items():
         if not ev["home"] or not ev["away"]:
