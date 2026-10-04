@@ -16,9 +16,9 @@ settings = get_settings()
 def persist_predictions(db: Session, fixture: Fixture):
     probs = predict_fixture(db, fixture)
     db.add_all([
-        Prediction(fixture_id=fixture.id, market="h2h", selection="HOME", probability=probs.home, fair_odds=1/max(probs.home, 0.001), model_name=probs.model_name, confidence=probs.confidence),
-        Prediction(fixture_id=fixture.id, market="h2h", selection="DRAW", probability=probs.draw, fair_odds=1/max(probs.draw, 0.001), model_name=probs.model_name, confidence=probs.confidence),
-        Prediction(fixture_id=fixture.id, market="h2h", selection="AWAY", probability=probs.away, fair_odds=1/max(probs.away, 0.001), model_name=probs.model_name, confidence=probs.confidence),
+        Prediction(fixture_id=fixture.id, market="h2h", selection="HOME", probability=probs.home, fair_odds=1 / max(probs.home, 0.001), model_name=probs.model_name, confidence=probs.confidence),
+        Prediction(fixture_id=fixture.id, market="h2h", selection="DRAW", probability=probs.draw, fair_odds=1 / max(probs.draw, 0.001), model_name=probs.model_name, confidence=probs.confidence),
+        Prediction(fixture_id=fixture.id, market="h2h", selection="AWAY", probability=probs.away, fair_odds=1 / max(probs.away, 0.001), model_name=probs.model_name, confidence=probs.confidence),
     ])
     return probs
 
@@ -31,7 +31,7 @@ async def run_cycle(db: Session) -> dict:
     details: dict = {}
 
     try:
-                football = FootballDataProvider(db)
+        football = FootballDataProvider(db)
         odds = OddsProvider(db)
 
         if football.enabled:
@@ -64,18 +64,17 @@ async def run_cycle(db: Session) -> dict:
         trader.ensure_bankroll()
         trader.settle_open()
 
-        # Generate predictions for upcoming/live matches.
         now = datetime.utcnow()
         fixtures = db.scalars(
             select(Fixture)
-            .where(Fixture.kickoff >= now - timedelta(hours=3), Fixture.kickoff <= now + timedelta(hours=24))
+            .where(Fixture.kickoff >= now - timedelta(hours=3))
+            .where(Fixture.kickoff <= now + timedelta(hours=24))
             .order_by(Fixture.kickoff)
             .limit(100)
         ).all()
 
         preds = 0
         bets = 0
-        enriched = 0
 
         for fixture in fixtures:
             if fixture.status in {"FT", "AET", "PEN"}:
