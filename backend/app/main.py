@@ -40,6 +40,22 @@ def admin_guard(token: str | None):
     if token != settings.admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token")
 
+def _fixture_info(db: Session, fixture_id: int | None):
+    if not fixture_id:
+        return None
+    f = db.get(Fixture, fixture_id)
+    if not f:
+        return None
+    ht = db.get(Team, f.home_team_id)
+    at = db.get(Team, f.away_team_id)
+    return {
+        "kickoff": f.kickoff.isoformat() if f.kickoff else None,
+        "status": f.status,
+        "home_team": ht.name if ht else "?",
+        "away_team": at.name if at else "?",
+        "home_goals": f.home_goals,
+        "away_goals": f.away_goals,
+    }
 
 @app.get("/api/health")
 def health():
@@ -417,6 +433,66 @@ def clear_predictions(x_admin_token: str | None = Header(default=None), db: Sess
     db.commit()
     return {"ok": True, "deleted": count}
 
+@app.post("/api/admin/clear-bets")
+def clear_bets(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    from .models import Bet, BankrollEvent
+    db.query(Bet).delete()
+    db.query(BankrollEvent).delete()
+    db.commit()
+    return {"ok": True, "message": "Vse stave in bankroll events so bile izbrisane."}
+
+
+@app.get("/api/matches/actionable")
+def matches_actionable(limit: int = Query(30, ge=1, le=100), x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    """Vrne samo prihajajoče tekme, ki imajo kvote (in napovedi)."""
+    admin_guard(x_admin_token)
+    from sqlalchemy import distinct
+    fixture_ids_with_odds = set(
+        r[0] for r in db.execute(
+            text("SELECT DISTINCT fixture_provider_id FROM odds_snapshots WHERE fixture_provider_id IS NOT NULL")
+        ).all()
+    )
+    now = datetime.utcnow()
+    fixtures = db.scalars(
+        select(Fixture)
+        .where(Fixture.provider_id.in_(fixture_ids_with_odds))
+        .where(Fixture.kickoff >= now)
+        .where(Fixture.status == "NS")
+        .order_by(Fixture.kickoff)
+        .limit(limit)
+    ).all()
+    result = []
+    for f in fixtures:
+        ht = db.get(Team, f.home_team_id)
+        at = db.get(Team, f.away_team_id)
+        preds = db.scalars(
+            select(Prediction).where(Prediction.fixture_id == f.id).limit(3)
+        ).all()
+        odds_count = db.scalar(
+            text("SELECT COUNT(*) FROM odds_snapshots WHERE fixture_provider_id = :pid"),
+            {"pid": f.provider_id}
+        )
+        bets_count = db.scalar(
+            text("SELECT COUNT(*) FROM bets WHERE fixture_id = :fid"),
+            {"fid": f.id}
+        )
+        result.append({
+            "id": f.id,
+            "provider_id": f.provider_id,
+            "kickoff": f.kickoff.isoformat() if f.kickoff else None,
+            "status": f.status,
+            "home_team": ht.name if ht else "?",
+            "away_team": at.name if at else "?",
+            "predictions": [
+                {"market": p.market, "selection": p.selection, "probability": p.probability,
+                 "fair_odds": p.fair_odds, "confidence": p.confidence, "model": p.model_name}
+                for p in preds
+            ],
+            "odds_count": int(odds_count or 0),
+            "bets_count": int(bets_count or 0),
+        })
+    return result
 
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
@@ -465,8 +541,40 @@ def match_detail(fixture_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/bets")
 def bets(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db)):
-    return db.scalars(select(Bet).order_by(Bet.created_at.desc()).limit(limit)).all()
-
+    rows = db.scalars(select(Bet).order_by(Bet.created_at.desc()).limit(limit)).all()
+    result = []
+    for b in rows:
+        fixture_info = None
+        if b.fixture_id:
+            f = db.get(Fixture, b.fixture_id)
+            if f:
+                ht = db.get(Team, f.home_team_id)
+                at = db.get(Team, f.away_team_id)
+                fixture_info = {
+                    "kickoff": f.kickoff.isoformat() if f.kickoff else None,
+                    "status": f.status,
+                    "home_team": ht.name if ht else "?",
+                    "away_team": at.name if at else "?",
+                    "home_goals": f.home_goals,
+                    "away_goals": f.away_goals,
+                }
+        result.append({
+            "id": b.id,
+            "fixture_id": b.fixture_id,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "status": b.status,
+            "mode": b.mode,
+            "market": b.market,
+            "selection": b.selection,
+            "odds": b.odds,
+            "model_probability": b.model_probability,
+            "edge": b.edge,
+            "stake": b.stake,
+            "potential_payout": b.potential_payout,
+            "pnl": b.pnl,
+            "fixture": fixture_info,
+        })
+    return result
 
 @app.get("/api/dashboard")
 def dashboard(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
@@ -492,9 +600,10 @@ def dashboard(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)
         "win_rate": wins / len(settled) if settled else 0,
         "avg_edge": avg_edge,
         "open_exposure": sum(b.stake for b in open_bets),
-        "recent_bets": [
+                "recent_bets": [
             {
                 "id": b.id,
+                "fixture_id": b.fixture_id,
                 "created_at": b.created_at,
                 "status": b.status,
                 "market": b.market,
@@ -504,6 +613,7 @@ def dashboard(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)
                 "edge": b.edge,
                 "stake": b.stake,
                 "pnl": b.pnl,
+                "fixture": _fixture_info(db, b.fixture_id),
             }
             for b in all_bets[:20]
         ],
