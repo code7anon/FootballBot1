@@ -69,16 +69,21 @@ class OddsProvider:
                             selection=outcome.get("name") or "unknown",
                             line=outcome.get("point"),
                             odds=float(outcome.get("price")),
-                            raw_json={"event": event, "bookmaker": bookmaker, "market": market, "headers": {
-                                "remaining": headers.get("x-requests-remaining"),
-                                "used": headers.get("x-requests-used"),
-                            }},
+                            raw_json={
+                                "event": event,
+                                "bookmaker": bookmaker,
+                                "market": market,
+                                "headers": {
+                                    "remaining": headers.get("x-requests-remaining"),
+                                    "used": headers.get("x-requests-used"),
+                                },
+                            },
                         ))
                         count += 1
         self.db.commit()
         return count
 
-       def _match_fixture(self, home: str, away: str, kickoff: str | None = None):
+    def _match_fixture(self, home: str, away: str, kickoff: str | None = None):
         fixtures = self.db.scalars(
             select(Fixture).order_by(Fixture.kickoff.desc()).limit(500)
         ).all()
@@ -87,7 +92,6 @@ class OddsProvider:
             if not s:
                 return ""
             s = s.lower()
-            # Odstrani pogoste oznake klubov
             for token in [" fc", " afc", " cf", " sc", " ac", "calcio ", " & ", " and ", "  "]:
                 s = s.replace(token, " ")
             return "".join(c for c in s if c.isalnum() or c == " ").strip()
