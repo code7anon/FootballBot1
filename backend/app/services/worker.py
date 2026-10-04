@@ -25,11 +25,15 @@ def persist_predictions(db: Session, fixture: Fixture):
 
 async def run_cycle(db: Session) -> dict:
     run = JobRun(job_type="cycle", status="RUNNING")
-    db.add(run); db.commit(); db.refresh(run)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
     details: dict = {}
+
     try:
-                football = TheSportsDBProvider(db)
+        football = TheSportsDBProvider(db)
         odds = OddsProvider(db)
+
         if football.enabled:
             today = datetime.now(timezone.utc).date()
             daily_key = f"daily_fixture_sync:{today.isoformat()}"
@@ -41,49 +45,73 @@ async def run_cycle(db: Session) -> dict:
                 db.commit()
             else:
                 details["today_fixtures"] = state.value_json.get("synced", 0)
-            live = await football.sync_live()
+            try:
+                live = await football.sync_live()
+            except Exception as exc:
+                live = 0
+                details.setdefault("live_errors", []).append(str(exc))
             details["live_fixtures"] = live
         else:
             details["today_fixtures"] = 0
             details["live_fixtures"] = 0
+
         if odds.enabled:
             details["odds_rows"] = await odds.sync_odds()
         else:
             details["odds_rows"] = 0
+
         trader = PaperTrader(db)
         trader.ensure_bankroll()
         trader.settle_open()
-        # Generate predictions for today's upcoming/live matches without over-calling providers.
+
+        # Generate predictions for upcoming/live matches.
         now = datetime.utcnow()
-        fixtures = db.scalars(select(Fixture).where(Fixture.kickoff >= now - timedelta(hours=3), Fixture.kickoff <= now + timedelta(hours=24)).order_by(Fixture.kickoff).limit(100)).all()
-        preds = 0; bets = 0; enriched = 0
+        fixtures = db.scalars(
+            select(Fixture)
+            .where(Fixture.kickoff >= now - timedelta(hours=3), Fixture.kickoff <= now + timedelta(hours=24))
+            .order_by(Fixture.kickoff)
+            .limit(100)
+        ).all()
+
+        preds = 0
+        bets = 0
+        enriched = 0
+
         for fixture in fixtures:
-            if football.enabled and enriched < settings.enrich_limit and fixture.status == "NS":
-                try:
-                    enriched += await football.enrich_fixture_injuries(fixture.id)
-                except Exception as exc:
-                    details.setdefault("enrichment_errors", []).append(str(exc))
             if fixture.status in {"FT", "AET", "PEN"}:
                 continue
+
             p = persist_predictions(db, fixture)
             probabilities = {"home": p.home, "draw": p.draw, "away": p.away}
-            # Totals feature is intentionally disabled until live/stat xG data is available.
             signals = build_signals(db, fixture, probabilities, p.confidence)
+
             for s in signals:
                 stake = trader.balance() * s.stake_pct
                 if stake > 0:
-                    bet = trader.place(fixture, s.market, s.selection, s.odds, s.probability, s.edge, stake, {"model": p.model_name, "confidence": p.confidence})
-                    if bet: bets += 1
+                    bet = trader.place(
+                        fixture,
+                        s.market,
+                        s.selection,
+                        s.odds,
+                        s.probability,
+                        s.edge,
+                        stake,
+                        {"model": p.model_name, "confidence": p.confidence},
+                    )
+                    if bet:
+                        bets += 1
             preds += 1
+
         db.commit()
         details["predicted_fixtures"] = preds
-        details["injury_enriched_teams"] = enriched
         details["paper_bets_created"] = bets
+
         run.status = "SUCCESS"
         run.finished_at = datetime.utcnow()
         run.details = details
         db.commit()
         return details
+
     except Exception as exc:
         run.status = "FAILED"
         run.finished_at = datetime.utcnow()
