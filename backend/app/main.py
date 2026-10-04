@@ -145,14 +145,6 @@ async def backfill(league_id: str, season: str | None = None, x_admin_token: str
         "season": season or settings.football_season,
         "fixtures": count,
     }
-@app.post("/api/admin/enrich/{fixture_id}")
-async def enrich(fixture_id: int, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
-    admin_guard(x_admin_token)
-    provider = FootballProvider(db)
-    if not provider.enabled:
-        raise HTTPException(400, "API_FOOTBALL_KEY is not configured")
-    teams = await provider.enrich_fixture_injuries(fixture_id)
-    return {"ok": True, "team_snapshots": teams}
 
 @app.post("/api/admin/reset-paper")
 def reset_paper(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):

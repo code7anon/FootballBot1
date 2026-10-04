@@ -3,19 +3,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-       # TheSportsDB (nadomešča API-Football)
-    thesportsdb_api_key: str = "3"  # Brezplačni testni ključ
-    thesportsdb_base_url: str = "https://www.thesportsdb.com/api/v1/json"
-    football_season: str = "2024-2025"  # TheSportsDB uporablja format "YYYY-YYYY"
-    tracked_leagues: str = "4328,4335,4331,4332,4334"  # PL, La Liga, Bundesliga, Serie A, Ligue 1
+    app_name: str = "Football Edge Bot"
+    env: str = "development"
+    log_level: str = "INFO"
 
     database_url: str | None = None
     postgresql_addon_uri: str | None = None
 
-    api_football_key: str | None = None
-    api_football_base_url: str = "https://v3.football.api-sports.io"
-    football_season: int = 2026
-    tracked_leagues: str = "39"
+    # TheSportsDB (nadomešča API-Football)
+    thesportsdb_api_key: str = "3"
+    thesportsdb_base_url: str = "https://www.thesportsdb.com/api/v1/json"
+    football_season: str = "2024-2025"
+    tracked_leagues: str = "4328,4335,4331,4332,4334"
 
     odds_api_key: str | None = None
     odds_api_base_url: str = "https://api.the-odds-api.com/v4"
@@ -47,9 +46,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
-        @property
+    @property
     def league_ids(self) -> list[str]:
-        return [x.strip() for x in self.tracked_leagues.split(",") if x.strip()]ip()) for x in self.tracked_leagues.split(",") if x.strip()]
+        return [x.strip() for x in self.tracked_leagues.split(",") if x.strip()]
 
     @property
     def cors(self) -> list[str]:
