@@ -63,8 +63,8 @@ async def run_cycle(db: Session) -> dict:
         elo_cache = elo_scores(db, now)
         details["elo_teams"] = len(elo_cache)
 
-        # 5. Prednostno obdelaj tekme, ki imajo kvote (365 dni naprej)
-        from sqlalchemy import text, distinct
+        # 5. Naloži tekme z kvotami LOČENO (brez limita 500)
+        from sqlalchemy import text
 
         fixtures_with_odds_ids = set(
             r[0] for r in db.execute(text("""
@@ -75,22 +75,31 @@ async def run_cycle(db: Session) -> dict:
         )
         details["fixtures_with_odds_total"] = len(fixtures_with_odds_ids)
 
-        # Vse prihajajoče tekme (365 dni naprej)
-        upcoming = db.scalars(
+        # Tekme Z KVOTAMI - neomejeno iskanje, brez order by limit
+        with_odds = []
+        if fixtures_with_odds_ids:
+            with_odds = db.scalars(
+                select(Fixture)
+                .where(Fixture.provider_id.in_(fixtures_with_odds_ids))
+                .where(Fixture.status == "NS")
+                .order_by(Fixture.kickoff)
+                .limit(30)
+            ).all()
+        details["fixtures_with_odds"] = len(with_odds)
+
+        # Dodaj 5 bližnjih tekem brez kvot (za testiranje modela)
+        without_odds = db.scalars(
             select(Fixture)
             .where(Fixture.kickoff >= now)
-            .where(Fixture.kickoff <= now + timedelta(days=365))
+            .where(Fixture.kickoff <= now + timedelta(days=30))
             .where(Fixture.status == "NS")
+            .where(~Fixture.provider_id.in_(fixtures_with_odds_ids))
             .order_by(Fixture.kickoff)
-            .limit(500)
+            .limit(5)
         ).all()
 
-        # Razvrsti: najprej tiste z kvotami, nato ostale
-        with_odds = [f for f in upcoming if f.provider_id in fixtures_with_odds_ids]
-        without_odds = [f for f in upcoming if f.provider_id not in fixtures_with_odds_ids]
-        fixtures = with_odds[:30] + without_odds[:5]
+        fixtures = list(with_odds) + list(without_odds)
         details["fixtures_selected"] = len(fixtures)
-        details["fixtures_with_odds"] = len(with_odds)
 
         preds = 0
         bets = 0
