@@ -63,16 +63,34 @@ async def run_cycle(db: Session) -> dict:
         elo_cache = elo_scores(db, now)
         details["elo_teams"] = len(elo_cache)
 
-        # 5. Select ONLY 15 upcoming fixtures (fast)
-        fixtures = db.scalars(
+        # 5. Prednostno obdelaj tekme, ki imajo kvote (365 dni naprej)
+        from sqlalchemy import text, distinct
+
+        fixtures_with_odds_ids = set(
+            r[0] for r in db.execute(text("""
+                SELECT DISTINCT fixture_provider_id
+                FROM odds_snapshots
+                WHERE fixture_provider_id IS NOT NULL
+            """)).all()
+        )
+        details["fixtures_with_odds_total"] = len(fixtures_with_odds_ids)
+
+        # Vse prihajajoče tekme (365 dni naprej)
+        upcoming = db.scalars(
             select(Fixture)
             .where(Fixture.kickoff >= now)
-            .where(Fixture.kickoff <= now + timedelta(days=30))
+            .where(Fixture.kickoff <= now + timedelta(days=365))
             .where(Fixture.status == "NS")
             .order_by(Fixture.kickoff)
-            .limit(15)
+            .limit(500)
         ).all()
+
+        # Razvrsti: najprej tiste z kvotami, nato ostale
+        with_odds = [f for f in upcoming if f.provider_id in fixtures_with_odds_ids]
+        without_odds = [f for f in upcoming if f.provider_id not in fixtures_with_odds_ids]
+        fixtures = with_odds[:30] + without_odds[:5]
         details["fixtures_selected"] = len(fixtures)
+        details["fixtures_with_odds"] = len(with_odds)
 
         preds = 0
         bets = 0
