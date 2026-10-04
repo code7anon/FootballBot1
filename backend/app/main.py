@@ -146,6 +146,62 @@ def odds_check(x_admin_token: str | None = Header(default=None), db: Session = D
         "distinct_fixtures_with_odds": int(distinct_fixtures or 0),
     }
 
+@app.get("/api/admin/fixtures-with-odds")
+def fixtures_with_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    rows = db.execute(text("""
+        SELECT f.id, f.kickoff, f.status, f.home_team_id, f.away_team_id,
+               COUNT(o.id) AS odds_count
+        FROM fixtures f
+        JOIN odds_snapshots o ON o.fixture_provider_id = f.provider_id
+        GROUP BY f.id, f.kickoff, f.status, f.home_team_id, f.away_team_id
+        ORDER BY f.kickoff
+        LIMIT 30
+    """)).all()
+    result = []
+    for r in rows:
+        ht = db.get(Team, r[3])
+        at = db.get(Team, r[4])
+        result.append({
+            "fixture_id": r[0],
+            "kickoff": r[1].isoformat() if r[1] else None,
+            "status": r[2],
+            "home": ht.name if ht else "?",
+            "away": at.name if at else "?",
+            "odds_count": r[5],
+        })
+    return result
+
+
+@app.get("/api/admin/upcoming-with-odds")
+def upcoming_with_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    """Vrne samo prihajajoče tekme (kickoff >= now) z odds_count > 0."""
+    admin_guard(x_admin_token)
+    now = datetime.utcnow()
+    rows = db.execute(text("""
+        SELECT f.id, f.kickoff, f.status, f.home_team_id, f.away_team_id,
+               COUNT(o.id) AS odds_count
+        FROM fixtures f
+        JOIN odds_snapshots o ON o.fixture_provider_id = f.provider_id
+        WHERE f.kickoff >= :now AND f.status = 'NS'
+        GROUP BY f.id, f.kickoff, f.status, f.home_team_id, f.away_team_id
+        ORDER BY f.kickoff
+        LIMIT 30
+    """), {"now": now}).all()
+    result = []
+    for r in rows:
+        ht = db.get(Team, r[3])
+        at = db.get(Team, r[4])
+        result.append({
+            "fixture_id": r[0],
+            "kickoff": r[1].isoformat() if r[1] else None,
+            "status": r[2],
+            "home": ht.name if ht else "?",
+            "away": at.name if at else "?",
+            "odds_count": r[5],
+        })
+    return result
+
 
 @app.post("/api/admin/relink-odds")
 def relink_odds(background_tasks: BackgroundTasks, x_admin_token: str | None = Header(default=None)):
