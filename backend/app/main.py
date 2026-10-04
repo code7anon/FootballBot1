@@ -90,6 +90,20 @@ def kill_connections(x_admin_token: str | None = Header(default=None), db: Sessi
         db.rollback()
         raise HTTPException(500, str(exc))
 
+@app.get("/api/admin/odds-check")
+def odds_check(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+    admin_guard(x_admin_token)
+    from sqlalchemy import text
+    total = db.scalar(text("SELECT COUNT(*) FROM odds_snapshots"))
+    linked = db.scalar(text("SELECT COUNT(*) FROM odds_snapshots WHERE fixture_provider_id IS NOT NULL"))
+    unlinked = db.scalar(text("SELECT COUNT(*) FROM odds_snapshots WHERE fixture_provider_id IS NULL"))
+    distinct_fixtures = db.scalar(text("SELECT COUNT(DISTINCT fixture_provider_id) FROM odds_snapshots WHERE fixture_provider_id IS NOT NULL"))
+    return {
+        "total_odds": total,
+        "linked_to_fixture": linked,
+        "unlinked": unlinked,
+        "distinct_fixtures_with_odds": distinct_fixtures,
+    }
 
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
