@@ -108,7 +108,7 @@ def odds_check(x_admin_token: str | None = Header(default=None), db: Session = D
 @app.post("/api/admin/relink-odds")
 def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
-    from ..services.odds import OddsProvider
+        from .services.odds import OddsProvider
     from ..models import OddsSnapshot, Team
     provider = OddsProvider(db)
 
@@ -189,7 +189,7 @@ def relink_odds(x_admin_token: str | None = Header(default=None), db: Session = 
         "linked_odds": linked,
     }
 
-    
+
 @app.get("/api/matches/{fixture_id}")
 def match_detail(fixture_id: int, db: Session = Depends(get_db)):
     f = db.get(Fixture, fixture_id)
