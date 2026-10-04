@@ -132,7 +132,6 @@ async def run_cycle_endpoint(x_admin_token: str | None = Header(default=None), d
         raise HTTPException(500, str(exc))
 
 
-
 @app.post("/api/admin/backfill")
 async def backfill(league_id: str, season: str | None = None, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
@@ -140,8 +139,12 @@ async def backfill(league_id: str, season: str | None = None, x_admin_token: str
     if not provider.enabled:
         raise HTTPException(400, "THESPORTSDB_API_KEY is not configured")
     count = await provider.sync_season(league_id, season)
-    return {"ok": True, "league_id": league_id, "season": season or settings.football_season, "fixtures": count}season": season, "fixtures": count}
-
+    return {
+        "ok": True,
+        "league_id": league_id,
+        "season": season or settings.football_season,
+        "fixtures": count,
+    }
 @app.post("/api/admin/enrich/{fixture_id}")
 async def enrich(fixture_id: int, x_admin_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     admin_guard(x_admin_token)
