@@ -31,8 +31,10 @@ async def run_cycle(db: Session) -> dict:
     details: dict = {}
 
     try:
-        football = FootballDataProvider(db)
+                football = FootballDataProvider(db)
         odds = OddsProvider(db)
+        print(f"DEBUG: football.enabled={football.enabled}, odds.enabled={odds.enabled}", flush=True)
+        print(f"DEBUG: api_key_present={bool(settings.football_data_api_key)}", flush=True)
 
         if football.enabled:
             today = datetime.now(timezone.utc).date()
