@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: football-edge-bot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
+      - key: ODDS_ENABLED
+        value: false
+      - key: TRACKED_LEAGUES
+        value: 39
+      - key: FOOTBALL_SEASON
+        value: 2026
+      - key: PAPER_TRADING
+        value: true
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://your-render-domain.onrender.com

@@ -1,0 +1,19 @@
+name: Football Edge Poller
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run collector cycle
+        env:
+          EDGE_API_URL: ${{ secrets.EDGE_API_URL }}
+          EDGE_ADMIN_TOKEN: ${{ secrets.EDGE_ADMIN_TOKEN }}
+        run: |
+          curl -fsS -X POST "$EDGE_API_URL/api/admin/run-cycle" \
+            -H "x-admin-token: $EDGE_ADMIN_TOKEN" \
+            -H "Content-Type: application/json"
